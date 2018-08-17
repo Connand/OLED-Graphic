@@ -59,8 +59,10 @@ signal transaction_done:std_logic;
 --acknowledge
 signal ack_error:std_logic;
 signal ack_done:std_logic;
+--start or stop
 signal shoud_stop:std_logic;
 signal re_start_done:std_logic;
+signal start_done:std_logic;
 --command code done
 signal cmd_done:std_logic;
 signal data_ready:std_logic;
@@ -126,18 +128,27 @@ begin
 		if RST='0' then
 			data_count<=8;
 			transaction_done<='0';
+			start_done<='0';
 			count<=0;
+			act_done<='0';
 		elsif falling_edge(I2CCLK) then
-			if SCLs='1' then
-				if count_en='1' then
+			if state=idle then
+				act_done<='1';
+			else
+				act_done<='0';
+			end if;
+			if count_en='1' then
+				if SCLs='1' then
 					if count=1 then
-						count<=0;
-					else
-						count<=count+1;
+						start_done<='1';
 					end if;
 				else
-					count<=0;
+					count<=1;
+					start_done<='0';
 				end if;
+			else
+				count<=0;
+				start_done<='0';
 			end if;
 			if data_enable='1' then
 				if SCLs='0' then
@@ -159,13 +170,14 @@ begin
 	
 	data_ch0<=channel0;
 	data_ch1<=channel1;
-	act_done<='1' when state=idle else '0';
 	I2C_FSM:
 	process(RST,CLK)
 	begin
 		if RST='0' then
 			data<="00000000";
 			data_read<="00000000";
+			channel0<=(others => '0');
+			channel1<=(others => '0');
 			state<=idle;
 			SCL_int<='1';
 			SDA_int<='1';
@@ -197,6 +209,7 @@ begin
 					if ena='1' then
 						state<=start;
 					end if;
+					
 				when start=>
 					count_en<='1';
 					case count is
@@ -207,15 +220,17 @@ begin
 							SDA_int<='0';
 						when others=>
 					end case;
-					if count=1 then
+					if start_done='1' then
 						count_en<='0';
 						state<=send_address;
 					end if;
+					
 				when send_address=>
 					data<="0111001" & read_or_write;
 					if SCLs='1' then
 						state<=sending_data;
 					end if;
+					
 				when sending_data=>
 					SCL_int<=SCLs;
 					if SCLs='0' then
@@ -225,6 +240,7 @@ begin
 						data_enable<='0';
 						state<=check_ack;
 					end if;
+					
 				when check_ack=>
 					SCL_int<=SCLs;
 					SDA_int<='1';
@@ -255,6 +271,7 @@ begin
 					end if;
 					
 				when send_data=>
+					SCL_int<=SCLs;
 					if data_ready='0' then
 						if TSL_onoff<='0' then
 							if cmd_done='0' then
@@ -273,39 +290,44 @@ begin
 							read_or_write<='1';
 						end if;
 						data_ready<='1';
-					elsif SCLs='0' then
+					else
 						data_ready<='0';
 						state<=sending_data;
 					end if;
 				when re_start=>
+					SCL_int<=SCLs;
 					count_en<='1';
-					case count is
-						when 0=>
-							SCL_int<='1';
-							SDA_int<='1';
-						when 1=>
-							SDA_int<='0';
-						when others=>
-					end case;
-					if count=1 then
+					SDA_int<='1';
+					if start_done='1' then
 						count_en<='0';
+						SDA_int<='0';
 						state<=send_address;
 					end if;
 					
 				when read_data=>
 					SDA_int<='1';
-					data_enable<='1';
 					SCL_int<=SCLs;
-					if SCLs='1' then
+					if SCLs='0' then
+						data_enable<='1';
+					elsif data_enable='1' then
 						data_read(data_count)<=SDA;
 					end if;
 					if transaction_done='1' then
 						data_enable<='0';
+						if HL=1 then
+							shoud_stop<='1';
+						else
+							shoud_stop<='0';
+						end if;
 						state<=send_ack;
 					end if;
 					
 				when send_ack=>
-					SDA_int<='0';
+					if shoud_stop='0' then
+						SDA_int<='0';
+					else
+						SDA_int<='1';
+					end if;
 					SCL_int<=SCLs;
 					if ch=0 then
 						if HL=0 then
@@ -332,7 +354,6 @@ begin
 							else
 								ch<=1;
 							end if;
-							shoud_stop<='1';
 						else
 							HL<=1;
 						end if;
@@ -344,19 +365,21 @@ begin
 					end if;
 					
 				when stop=>
-					count_en<='1';
+					if SCLs='0' then
+						count_en<='1';
+					end if;
 					SCL_int<=SCLs;
 					case count is
 						when 0=>
-							SDA_int<='0';
-						when 1=>
 							SDA_int<='1';
-						when others=>
+						when 1=>
+							SDA_int<='0';
 					end case;
-					if count=1 then
+					if start_done='1' then
 						count_en<='0';
 						shoud_stop<='0';
 						re_start_done<='0';
+						SDA_int<='1';
 						state<=idle;
 					end if;
 			end case;

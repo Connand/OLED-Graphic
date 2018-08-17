@@ -8,7 +8,6 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use ieee.std_logic_arith.all;
-use ieee.numeric_std.all;
 
 entity OLED_graphic3 is
 	port	(	CLK:in std_logic;
@@ -158,6 +157,8 @@ architecture scan of OLED_graphic3 is
 	signal GDD_bargraph:std_logic_vector(7 downto 0);
 	signal GDD_image:std_logic_vector(7 downto 0);
 	signal GDD_image2:std_logic_vector(7 downto 0);
+	signal GDD_TSL_CH0:std_logic_vector(7 downto 0);
+	signal GDD_TSL_CH1:std_logic_vector(7 downto 0);
 	--scan signals
 	signal scan_clk:std_logic;
 	signal col_counter:integer range 0 to 127;	--行數128
@@ -241,7 +242,7 @@ architecture scan of OLED_graphic3 is
 		type char is array(0 to 127) of std_logic_vector(7 downto 0);
 		type chars is array(0 to 11) of char;	--0~9數字編碼 10"溫" 11"度"
 		signal ROM:chars;
-		signal lux:integer range 0 to 50;	--顯示數字
+		signal lux:integer range 0 to 65535;	--顯示數字
 begin
 	--1:OLED right
 	--2:OLED left
@@ -416,22 +417,43 @@ begin
 		GDD_image2<=OLED_screenShow(GDDRAM_col_pointer+128*GDDRAM_page);
 		--上方："溫度"+數字	
 		--下方：長條圖
-		GDD_image<=	ROM(10)(GDDRAM_col_pointer+32*GDDRAM_page)										when GDDRAM_col_pointer<32 and GDDRAM_page<4 else
-						ROM(11)(GDDRAM_col_pointer-32+32*GDDRAM_page)									when GDDRAM_col_pointer<64 and GDDRAM_col_pointer>31 and GDDRAM_page<4  else
-						ROM((lux mod 100) / 10)(GDDRAM_col_pointer-64+32*GDDRAM_page)	when GDDRAM_col_pointer<96 and GDDRAM_col_pointer>63 and GDDRAM_page<4  else
+		GDD_image<=	ROM(lux /1000)(GDDRAM_col_pointer+32*GDDRAM_page)										when GDDRAM_col_pointer<32 and GDDRAM_page<4 else
+						ROM((lux / 100) mod 10)(GDDRAM_col_pointer-32+32*GDDRAM_page)									when GDDRAM_col_pointer<64 and GDDRAM_col_pointer>31 and GDDRAM_page<4  else
+						ROM((lux / 10) mod 10)(GDDRAM_col_pointer-64+32*GDDRAM_page)	when GDDRAM_col_pointer<96 and GDDRAM_col_pointer>63 and GDDRAM_page<4  else
 						ROM(lux mod 10)(GDDRAM_col_pointer-96+32*GDDRAM_page)				when GDDRAM_col_pointer<128 and GDDRAM_col_pointer>95 and GDDRAM_page<4  else
 						GDD_bargraph	when GDDRAM_page>3;
 		
-		GDD_bargraph<="11111111" when GDDRAM_col_pointer<=127*lux/50 else "00000000";	--0~50 將數值繪製長條圖：127*(lux/50)
+		GDD_bargraph<="11111111" when GDDRAM_col_pointer<=127*lux/9999 else "00000000";	--0~9999 將數值繪製長條圖：127*(lux/9999)
 		GDD_scan<="11111111" when GDDRAM_col_pointer<=col_counter else "00000000";
+		with GDDRAM_page select
+		GDD_TSL_CH0<=	(7 downto 4=>TSL_data_ch0(15)) & (3 downto 0=>TSL_data_ch0(14))	when 0,
+							(7 downto 4=>TSL_data_ch0(13)) & (3 downto 0=>TSL_data_ch0(12))	when 1,
+							(7 downto 4=>TSL_data_ch0(11)) & (3 downto 0=>TSL_data_ch0(10))	when 2,
+							(7 downto 4=>TSL_data_ch0(9)) & (3 downto 0=>TSL_data_ch0(8))	when 3,
+							(7 downto 4=>TSL_data_ch0(7)) & (3 downto 0=>TSL_data_ch0(6))	when 4,
+							(7 downto 4=>TSL_data_ch0(5)) & (3 downto 0=>TSL_data_ch0(4))	when 5,
+							(7 downto 4=>TSL_data_ch0(3)) & (3 downto 0=>TSL_data_ch0(2))	when 6,
+							(7 downto 4=>TSL_data_ch0(1)) & (3 downto 0=>TSL_data_ch0(0))	when 7,
+							"00000000"	when others;
+		with GDDRAM_page select
+		GDD_TSL_CH1<=	(7 downto 4=>TSL_data_ch1(15)) & (3 downto 0=>TSL_data_ch1(14))	when 0,
+							(7 downto 4=>TSL_data_ch1(13)) & (3 downto 0=>TSL_data_ch1(12))	when 1,
+							(7 downto 4=>TSL_data_ch1(11)) & (3 downto 0=>TSL_data_ch1(10))	when 2,
+							(7 downto 4=>TSL_data_ch1(9)) & (3 downto 0=>TSL_data_ch1(8))	when 3,
+							(7 downto 4=>TSL_data_ch1(7)) & (3 downto 0=>TSL_data_ch1(6))	when 4,
+							(7 downto 4=>TSL_data_ch1(5)) & (3 downto 0=>TSL_data_ch1(4))	when 5,
+							(7 downto 4=>TSL_data_ch1(3)) & (3 downto 0=>TSL_data_ch1(2))	when 6,
+							(7 downto 4=>TSL_data_ch1(1)) & (3 downto 0=>TSL_data_ch1(0))	when 7,
+							"00000000"	when others;
+		
 		with mode select	--右OLED
 		GDDRAMo1<=	GDD_image when "00",
 						not GDD_scan when "01",
-						"00000000" when others;
+						GDD_TSL_CH0 when others;
 		with mode select	--左OLED
 		GDDRAM2o1<=	GDD_scan when "00",
 						GDD_image2 when "01",
-						"00000000" when others;
+						GDD_TSL_CH1 when others;
 						
 		--OLED資料輸出設定
 		OLED_data<=OLED_RUNT(OLED_init) when OLED_CoDC="10" else GDDRAMo1;
@@ -511,35 +533,27 @@ begin
 	
 	--TSL2561
 	x2:block
-		constant K1T:std_logic_vector(15 downto 0):=X"0040";
-		constant B1T:std_logic_vector(15 downto 0):=X"01F2";
-		constant M1T:std_logic_vector(15 downto 0):=X"01BE";
-		constant K2T:std_logic_vector(15 downto 0):=X"0080";
-		constant B2T:std_logic_vector(15 downto 0):=X"0214";
-		constant M2T:std_logic_vector(15 downto 0):=X"02D1";
-		constant K3T:std_logic_vector(15 downto 0):=X"00C0";
-		constant B3T:std_logic_vector(15 downto 0):=X"023F";
-		constant M3T:std_logic_vector(15 downto 0):=X"037B";
-		constant K4T:std_logic_vector(15 downto 0):=X"0100";
-		constant B4T:std_logic_vector(15 downto 0):=X"0270";
-		constant M4T:std_logic_vector(15 downto 0):=X"03FE";
-		constant K5T:std_logic_vector(15 downto 0):=X"0138";
-		constant B5T:std_logic_vector(15 downto 0):=X"016F";
-		constant M5T:std_logic_vector(15 downto 0):=X"01FC";
-		constant K6T:std_logic_vector(15 downto 0):=X"019A";
-		constant B6T:std_logic_vector(15 downto 0):=X"00D2";
-		constant M6T:std_logic_vector(15 downto 0):=X"00FB";
-		constant K7T:std_logic_vector(15 downto 0):=X"029A";
-		constant B7T:std_logic_vector(15 downto 0):=X"0018";
-		constant M7T:std_logic_vector(15 downto 0):=X"0012";
-		constant K8T:std_logic_vector(15 downto 0):=X"029A";
-		constant B8T:std_logic_vector(15 downto 0):=X"0000";
-		constant M8T:std_logic_vector(15 downto 0):=X"0000";
-		constant shift:std_logic_vector(13 downto 0):="10000000000000";
+		type KTC_T is array (0 to 7) of std_logic_vector(11 downto 0);
+		constant KT_T_FN_CL:KTC_T:=(X"040",X"080",X"0c0",X"100",X"138",X"19a",X"29a",X"29a");
+		constant BT_T_FN_CL:KTC_T:=(X"1f2",X"214",X"23f",X"270",X"16f",X"0d2",X"018",X"000");
+		constant MT_T_FN_CL:KTC_T:=(X"1be",X"2d1",X"37b",X"3fe",X"1fc",X"0fb",X"012",X"000");
 		constant CH_SCALE:integer:=10;
-		constant chscale:std_logic_vector(15 downto 0):=X"4000";	--402ms integration and gain=1x
 		constant LUX_SCALE:integer:=14;
 		constant RATIO_SCALE:integer:=9;
+		signal CH0:integer range 0 to 65535;	--16bit
+		signal CH1:integer range 0 to 65535;	--16bit
+		signal chScale0:std_logic_vector(15 downto 0);
+		signal chScale1:std_logic_vector(19 downto 0);
+		signal chScale:integer range 0 to 1048575;	--20bit
+		signal channel0:integer range 0 to 67108863;	--26bit
+		signal channel1:std_logic_vector(25 downto 0);
+		signal ratio1:integer range 0 to 4095;	--12bit
+		signal ratio:std_logic_vector(11 downto 0);
+		signal KTC,BTC,MTC:KTC_T;
+		signal BM:integer range 0 to 7;
+		signal tempb,tempm,temp0,temp:integer range 0 to 520093695;	--32bit
+		signal LUXS:integer range 0 to 65535;	--16bit
+		signal LUXDP:integer range 0 to 7;
 	begin
 		TSL_control:
 		process(RST,CLK)
@@ -547,72 +561,155 @@ begin
 			if RST='0' then
 				TSL_act<='0';
 			elsif rising_edge(CLK) then
+				TSL_act<='0';
 				if TSL_done='1' then
 					TSL_act<='1';
-				else
-					TSL_act<='0';
 				end if;
 			end if;
 		end process;
 		
-		calculate:
-		process(RST,CLK)
-			variable temp:integer;
-			variable lux_bf:integer;
-			variable temp_data:std_logic_vector(15 downto 0);
-			variable channel0:std_logic_vector(15 downto 0);
-			variable channel1:std_logic_vector(15 downto 0);
-			variable ratio:integer;
-			variable ratio1:integer;
-			variable b,m:integer;
-		begin
-			if RST='0' then
-				TSL_data_read<='0';
-				ratio:=0;
-				lux<=0;
-				lux_bf:=0;
-				temp_data:= (others=> '0');
-			elsif rising_edge(CLK) then
-				if TSL_data_read='0' and TSL_data_ready='1' then
-					TSL_data_read<='1';
-					temp_data:=conv_std_logic_vector(conv_integer(TSL_data_ch0) * conv_integer(chscale),16);
-					channel0:="0000000000" & temp_data(15 downto 10);
-					temp_data:=conv_std_logic_vector(conv_integer(TSL_data_ch1) * conv_integer(chscale),16);
-					channel1:="0000000000" & temp_data(15 downto 10);
-					if channel0 /= 0 then
-						ratio1:= conv_integer((channel1(5 downto 0) & "0000000000")) / conv_integer(channel0);
-					end if;
-					ratio:=conv_integer('0' & conv_std_logic_vector((ratio1+1),15));
-						if ratio>=0 and ratio<=K1T then
-							b:=conv_integer(B1T); m:=conv_integer(M1T);
-						elsif ratio>=K1T and ratio<=K2T then
-							b:=conv_integer(B2T); m:=conv_integer(M2T);
-						elsif ratio>=K2T and ratio<=K3T then
-							b:=conv_integer(B3T); m:=conv_integer(M3T);					
-						elsif ratio>=K3T and ratio<=K4T then
-							b:=conv_integer(B4T); m:=conv_integer(M4T);					
-						elsif ratio>=K4T and ratio<=K5T then
-							b:=conv_integer(B5T); m:=conv_integer(M5T);					
-						elsif ratio>=K5T and ratio<=K6T then
-							b:=conv_integer(B6T); m:=conv_integer(M6T);					
-						elsif ratio>=K6T and ratio<=K7T then
-							b:=conv_integer(B7T); m:=conv_integer(M7T);					
-						elsif ratio>K8T then
-							b:=conv_integer(B8T); m:=conv_integer(M8T);			
-						end if;
-						temp:=(conv_integer(channel0)*b) - (conv_integer(channel1)*m);
-	--					if temp<0 then
-	--						temp<=0;
-	--					end if;
-						temp:=temp + conv_integer(shift);
-						temp_data:=conv_std_logic_vector(temp,16);
-						lux_bf:=conv_integer("00000000000000" & temp_data(15 downto 14));
-						lux<=lux_bf;
-					else
-						TSL_data_read<='0';
-					end if;
-			end if;
-		end process;
+--Calculate LX(default settings)
+		CH0<=conv_integer(TSL_data_ch0);
+		CH1<=conv_integer(TSL_data_ch1);
+		--integration 402ms
+		chScale0<=X"0040";
+		--gain 1X
+		chScale1<=chScale0 & "0000";
+		chScale<=conv_integer(chScale1);
+		--channel = (ch * chScale) >> CH_SCALE
+		channel0<=conv_integer(conv_std_logic_vector(CH0 * chScale ,36)(35 downto 10));
+		channel1<=conv_std_logic_vector(CH1 * chScale ,36)(35 downto 10);
+		--ratio = (channel1 << (RATIO_SCALE+1)) / channel0
+		ratio1<=conv_integer(channel1 & "0000000000") / channel0 when channel0/=0 else 0;
+		--ratio = (ratio1 + 1) >> 1
+		ratio<=conv_std_logic_vector(ratio1+1 ,13)(12 downto 1);
+		--type 0(T FN CL)
+		KTC<=KT_T_FN_CL;
+		BTC<=BT_T_FN_CL;
+		MTC<=MT_T_FN_CL;
+		BM<=	0 when ratio>=0 and ratio<=KTC(0) else
+				1 when ratio<=KTC(1) else
+				2 when ratio<=KTC(2) else
+				3 when ratio<=KTC(3) else
+				4 when ratio<=KTC(4) else
+				5 when ratio<=KTC(5) else
+				6 when ratio<=KTC(6) else
+				7 ;
+		tempb<=channel0*conv_integer(BTC(BM));						--channe0*b
+		tempm<=conv_integer(channel1)*conv_integer(MTC(BM));	--channe1*m
+		temp0<=0 when tempb<tempm else tempb-tempm;
+		--temp += (1 << (LUX_SCALE-1))
+		temp<=temp0 + 8192;
+		--lux = temp >> LUX_SCALE
+		LUXS<=conv_integer(CONV_STD_LOGIC_VECTOR(temp,33)(32 downto 14));
+		LUXDP<=1 when LUXS<10000 else 5;
+		--若LUXS<10000 則顯示到小數第一位
+		--若LUXS>=10000 則顯示到個位數
+		lux<=	LUXS	when LUXDP=1 else
+				LUXS/10;
+--Calculate LX(default settings)
+
+--		calculate:
+--		process(RST,Q(25))
+--			variable temp:std_logic_vector(31 downto 0);--unsigned long
+--			variable lux_bf:std_logic_vector(31 downto 0);--unsigned long
+--			variable channel0:std_logic_vector(31 downto 0);--unsigned long
+--			variable channel1:std_logic_vector(31 downto 0);--unsigned long
+--			variable chScale:std_logic_vector(31 downto 0);--unsigned long
+--			variable ratio:std_logic_vector(31 downto 0);--unsigned long
+--			variable ratio1:std_logic_vector(31 downto 0);--unsigned long
+--			variable b,m:std_logic_vector(15 downto 0);--unsigned int
+--		begin
+--			if RST='0' then
+--				TSL_data_read<='0';
+--				ratio:=(others => '0');
+--				lux<=9487;
+--				lux_bf:=(others => '0');
+--				chScale:= (others=>'0');
+--				
+--			elsif rising_edge(Q(20)) then
+--				if TSL_data_ready='1' then
+--					TSL_data_read<='1';
+--					
+--					--integration:402ms
+--					--chScale = (1 << CH_SCALE)
+--					chScale:= (31 downto 1=> '0') & (0 => '1');
+--					for i in 0 to CH_SCALE-1 loop
+--						chScale:=chScale(30 downto 0) & chScale(31);
+--					end loop;
+--					
+--					--gain:1X
+--					--chScale = chScale << 4
+--					for i in 0 to 3 loop
+--						chScale:=chScale(30 downto 0) & chScale(31);
+--					end loop;
+--					
+--					--channel0 = (ch0 * chScale) >> CH_SCALE
+--					channel0:=conv_std_logic_vector(unsigned(TSL_data_ch0 * chScale),32);
+--					for i in 0 to CH_SCALE-1 loop
+--						channel0:=channel0(0) & channel0(31 downto 1);
+--					end loop;
+--					
+--					--channel1 = (ch1 * chScale) >> CH_SCALE
+--					channel1:=conv_std_logic_vector(unsigned(TSL_data_ch1 * chScale),32);
+--					for i in 0 to CH_SCALE-1 loop
+--						channel1:=channel1(0) & channel1(31 downto 1);
+--					end loop;
+--					
+--					--ratio1 = 0
+--					ratio1:=(others => '0');
+--					
+--					if channel0 /= 0 then
+--						--ratio1 = (channel1 << (RATIO_SCALE+1) / channel0
+--						ratio1:=channel1;
+--						for i in 0 to RATIO_SCALE loop
+--							ratio1:=channel1(30 downto 0) & channel1(31);
+--						end loop;
+--						ratio1:=conv_std_logic_vector(conv_integer(ratio1) / conv_integer(channel0),32);
+--					end if;
+--					
+--					--ratio = (ratio1 + 1) >> 1
+--					ratio:=ratio1 + 1;
+--					ratio:=ratio(0) & ratio(31 downto 1);
+--					
+--					if ratio>=0 and ratio<=K1T then
+--						b:=(B1T); m:=(M1T);
+--					elsif ratio>=K1T and ratio<=K2T then
+--						b:=(B2T); m:=(M2T);
+--					elsif ratio>=K2T and ratio<=K3T then
+--						b:=(B3T); m:=(M3T);					
+--					elsif ratio>=K3T and ratio<=K4T then
+--						b:=(B4T); m:=(M4T);					
+--					elsif ratio>=K4T and ratio<=K5T then
+--						b:=(B5T); m:=(M5T);					
+--					elsif ratio>=K5T and ratio<=K6T then
+--						b:=(B6T); m:=(M6T);					
+--					elsif ratio>=K6T and ratio<=K7T then
+--						b:=(B7T); m:=(M7T);					
+--					elsif ratio>K8T then
+--						b:=(B8T); m:=(M8T);			
+--					end if;
+--					
+--					--temp = ((channel0 * b) - (channel1 * m))
+--					temp:=conv_std_logic_vector(unsigned((channel0 * b) - (channel1 * m)) , 32);
+--					
+--					--if(temp < 0) temp = 0
+--					
+--					--temp += (1 << (LUX_SCALE-1))
+--					temp:=temp + "10000000000000";
+--					
+--					--lux = temp >> LUX_SCALE
+--					lux_bf:=temp;
+--					for i in 0 to LUX_SCALE-1 loop
+--						lux_bf:=lux_bf(0) & lux_bf(31 downto 1);
+--					end loop;
+--					
+--					lux<=conv_integer(lux_bf);
+--				else
+--					TSL_data_read<='0';
+--				end if;
+--			end if;
+--		end process;
 	end block x2;
 
 
